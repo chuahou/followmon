@@ -15,10 +15,17 @@ ghc-options:
 default-extensions:
     - ImportQualifiedPost
     - LambdaCase
+    - QuasiQuotes
     - TupleSections
 
 dependencies:
     - base >= 4.16 && < 5
+    - aeson ^>= 2.1.1.0
+    - containers ^>= 0.6.5.1
+    - dhall ^>= 1.41.2
+    - http-conduit ^>= 2.3.8
+    - string-interpolate ^>= 0.3.2.0
+    - utf8-string ^>= 1.0.2
 
 executable:
     main:        Main.hs
