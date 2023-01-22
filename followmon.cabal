@@ -21,6 +21,7 @@ source-repository head
 executable followmon
   main-is: Main.hs
   other-modules:
+      Followmon.Network
       Paths_followmon
   hs-source-dirs:
       exe
