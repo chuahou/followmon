@@ -1,0 +1,34 @@
+cabal-version: 1.12
+
+-- This file has been generated from package.yaml by hpack version 0.34.7.
+--
+-- see: https://github.com/sol/hpack
+
+name:           followmon
+version:        0.1.0.0
+synopsis:       Telegram bot that monitors Twitter followers
+description:    See README at <https://github.com/chuahou/followmon#readme>.
+category:       Web
+homepage:       https://github.com/chuahou/followmon#readme
+bug-reports:    https://github.com/chuahou/followmon/issues
+maintainer:     Chua Hou <human+github@chuahou.dev>
+build-type:     Simple
+
+source-repository head
+  type: git
+  location: https://github.com/chuahou/followmon
+
+executable followmon
+  main-is: Main.hs
+  other-modules:
+      Paths_followmon
+  hs-source-dirs:
+      exe
+  default-extensions:
+      ImportQualifiedPost
+      LambdaCase
+      TupleSections
+  ghc-options: -Wall -fwarn-incomplete-uni-patterns -fwarn-incomplete-record-updates -static -threaded
+  build-depends:
+      base >=4.16 && <5
+  default-language: Haskell2010

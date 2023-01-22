@@ -1,0 +1,26 @@
+name:        followmon
+version:     0.1.0.0
+synopsis:    Telegram bot that monitors Twitter followers
+description: See README at <https://github.com/chuahou/followmon#readme>.
+category:    Web
+github:      chuahou/followmon
+maintainer:  Chua Hou <human+github@chuahou.dev>
+
+ghc-options:
+    - -Wall
+    - -fwarn-incomplete-uni-patterns
+    - -fwarn-incomplete-record-updates
+    - -static
+
+default-extensions:
+    - ImportQualifiedPost
+    - LambdaCase
+    - TupleSections
+
+dependencies:
+    - base >= 4.16 && < 5
+
+executable:
+    main:        Main.hs
+    source-dirs: exe
+    ghc-options: -threaded
