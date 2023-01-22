@@ -21,7 +21,7 @@
             name = "followmon-source";
             src = ./.;
           };
-          compiler-nix-name = "ghc925";
+          compiler-nix-name = "ghc925"; # Keep synced with cabal.project.
         };
       })
     ];
@@ -34,10 +34,17 @@
   in flake // {
     defaultPackage.${system} = flake.packages."followmon:exe:followmon";
     devShell.${system} = pkgs.followmon.shellFor {
-      tools.hoogle = {
-        version = "5.0.18.3";
-        index-state = "2023-01-22T00:00:00Z";
-        materialized = ./materialized/hoogle;
+      tools = {
+        haskell-language-server = {
+          version = "1.9.0.0";
+          index-state = "2023-01-22T00:00:00Z";
+          materialized = ./materialized/haskell-language-server;
+        };
+        hoogle = {
+          version = "5.0.18.3";
+          index-state = "2023-01-22T00:00:00Z";
+          materialized = ./materialized/hoogle;
+        };
       };
       nativeBuildInputs = with pkgs; [
         cabal-install
