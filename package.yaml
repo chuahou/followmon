@@ -13,6 +13,7 @@ ghc-options:
     - -static
 
 default-extensions:
+    - DeriveGeneric
     - DuplicateRecordFields
     - ImportQualifiedPost
     - LambdaCase
@@ -21,7 +22,9 @@ default-extensions:
     - OverloadedRecordDot
     - OverloadedStrings
     - QuasiQuotes
+    - ScopedTypeVariables
     - TupleSections
+
 dependencies:
     - base >= 4.16 && < 5
     - aeson ^>= 2.1.1.0

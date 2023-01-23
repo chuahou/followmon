@@ -23,11 +23,13 @@ executable followmon
   other-modules:
       Followmon.Config
       Followmon.Log
+      Followmon.Telegram
       Followmon.Twitter
       Paths_followmon
   hs-source-dirs:
       exe
   default-extensions:
+      DeriveGeneric
       DuplicateRecordFields
       ImportQualifiedPost
       LambdaCase
@@ -36,6 +38,7 @@ executable followmon
       OverloadedRecordDot
       OverloadedStrings
       QuasiQuotes
+      ScopedTypeVariables
       TupleSections
   ghc-options: -Wall -fwarn-incomplete-uni-patterns -fwarn-incomplete-record-updates -static -threaded
   build-depends:

@@ -1,8 +1,6 @@
 -- SPDX-License-Identifier: MIT
 -- Copyright (c) 2023 Chua Hou
 
-{-# LANGUAGE DeriveGeneric #-}
-
 module Followmon.Config (Config (..)) where
 import Dhall (FromDhall, Generic, Natural)
 
@@ -11,5 +9,7 @@ data Config = Config
     , intervalSeconds    :: Natural -- ^ Interval in seconds to check.
     , username           :: String -- ^ Username to monitor.
     , filename           :: FilePath -- ^ Filepath for serialized sets.
+    , telegramBotToken   :: String -- ^ Bot token for Telegram.
+    , telegramChatID     :: String -- ^ Chat ID for Telegram.
     } deriving (Generic, Show)
 instance FromDhall Config
