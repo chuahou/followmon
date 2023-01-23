@@ -7,7 +7,12 @@
 {-# LANGUAGE NumericUnderscores    #-}
 {-# LANGUAGE ScopedTypeVariables   #-}
 
-module Followmon.Twitter (UserID, getFollowerIDs) where
+module Followmon.Twitter
+    ( UserID
+    , UserJSON (..)
+    , getFollowerIDs
+    , lookupUsersByID
+    ) where
 
 import Followmon.Log           qualified as Log
 
@@ -15,8 +20,9 @@ import Control.Concurrent      (threadDelay)
 import Control.Exception       (handle, throw)
 import Control.Monad           (when)
 import Data.Aeson              (FromJSON (..), withObject, (.:))
-import Data.ByteString.UTF8    as BSU
+import Data.ByteString.UTF8    qualified as BSU
 import Data.Function           ((&))
+import Data.List               (intercalate)
 import Data.Set                (Set)
 import Data.Set                qualified as Set
 import Data.String.Interpolate (i)
@@ -120,3 +126,29 @@ waitForRateLimit action = handle handler action
                 _ -> throw e
         -- Forward all other exceptions.
         handler e = throw e
+
+-- | Lookup a list of users by their user IDs.
+lookupUsersByID :: String -- ^ Bearer token.
+                -> [UserID] -- ^ List of user IDs.
+                -> IO [UserJSON]
+lookupUsersByID tok ids = do
+    Log.info [i|Looking up #{length ids} users|]
+    users <- fmap concat . mapM lookupGroup . groupIds $ ids
+    Log.info [i|Looked up #{length users} users|]
+    pure users
+    where
+        -- Split IDs into groups of 100.
+        groupIds :: [UserID] -> [[UserID]]
+        groupIds [] = []
+        groupIds xs = let (ys, xs') = splitAt 100 xs
+                       in ys : groupIds xs'
+        lookupGroup :: [UserID] -> IO [UserJSON]
+        lookupGroup ids' = do
+            Log.info [i|Requesting #{length ids'} users|]
+            let usersParam = intercalate "," . map show $ ids'
+            let req = [i|GET #{twitterAPI}/2/users|]
+                    & setRequestBearerAuth [i|#{tok}|]
+                    & addToRequestQueryString [("ids", Just [i|#{usersParam}|])]
+            DataWrapper users <- waitForRateLimit $
+                                    getResponseBody <$> httpJSON req
+            pure users
