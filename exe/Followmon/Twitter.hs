@@ -33,7 +33,7 @@ import Network.HTTP.Simple     (JSONException (..), addToRequestQueryString,
                                 setRequestBearerAuth)
 
 -- | Type of user IDs.
-type UserID = Integer
+type UserID = String
 
 -- | Type of response to the followers endpoint.
 data FollowersJSON = FollowersJSON
@@ -75,6 +75,7 @@ getFollowerIDs tok username = go Nothing
                     & addToRequestQueryString
                         [ ("screen_name", Just [i|#{username}|])
                         , ("count", Just [i|#{count}|])
+                        , ("stringify_ids", Just "true")
                         ]
             let req' = maybe req (\cursor ->
                         req & addToRequestQueryString
@@ -142,7 +143,7 @@ lookupUsersByID tok ids = do
         lookupGroup :: [UserID] -> IO [UserJSON]
         lookupGroup ids' = do
             Log.info [i|Requesting #{length ids'} users|]
-            let usersParam = intercalate "," . map show $ ids'
+            let usersParam = intercalate "," ids'
             let req = [i|GET #{twitterAPI}/2/users|]
                     & setRequestBearerAuth [i|#{tok}|]
                     & addToRequestQueryString [("ids", Just [i|#{usersParam}|])]
