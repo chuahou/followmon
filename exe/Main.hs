@@ -5,14 +5,15 @@ module Main (main) where
 
 import Followmon.Config
 import Followmon.Log           qualified as Log
+import Followmon.Telegram
 import Followmon.Twitter
 
 import Control.Applicative     ((<|>))
 import Control.Concurrent      (threadDelay)
 import Control.Exception       (SomeException, handle, throw)
-import Control.Monad           (when, (>=>))
 import Data.Binary             (decodeOrFail, encodeFile)
 import Data.ByteString.Lazy    qualified as BL
+import Data.List               (intercalate)
 import Data.Set                (Set)
 import Data.Set                qualified as Set
 import Data.String.Interpolate (i)
@@ -22,9 +23,23 @@ import System.Exit             (exitFailure)
 
 main :: IO ()
 main = getArgs >>= \case
-        [x] -> inputFile auto [i|#{x}|] >>= handle handler . go
+        [x] -> inputFile auto [i|#{x}|] >>= \cfg -> handle (handler cfg) (go cfg)
         _   -> usage
     where
+        -- Catch all exceptions and print them both to log and to Telegram
+        -- before forwarding them.
+        handler :: Config -> SomeException -> IO ()
+        handler cfg e = do
+            Log.err "Unexpected exception occurred"
+            sendMessage cfg.telegramBotToken cfg.telegramChatID $ concat
+                [ "*UNEXPECTED ERROR*\n"
+                , "Attempting to send error message\\.\n"
+                , "May fail if special characters are encountered\\."
+                ]
+            sendMessage cfg.telegramBotToken cfg.telegramChatID
+                [i|```\n#{show e}\n```|]
+            throw e
+
         go :: Config -> IO ()
         go cfg = do
             Log.info [i|Getting initial lists of #{Incoming} and #{Outgoing}|]
@@ -42,28 +57,39 @@ main = getArgs >>= \case
                     Log.info "Writing initial lists to disk"
                     encodeFile cfg.filename (ins, outs)
                     pure (ins, outs)
-                Right (_, _, y) -> pure y
-            putStrLn [i|Initialized with #{Set.size ins} #{Incoming} and #{Set.size outs} #{Outgoing}|]
+                Right (_, _, y) -> do
+                    Log.info "Decoded initial lists from file"
+                    pure y
+            sendMessage cfg.telegramBotToken cfg.telegramChatID
+                [i|Initialized with #{Set.size ins} #{Incoming} and #{Set.size outs} #{Outgoing}\\.|]
             loop cfg ins outs -- Enter main loop.
         loop :: Config -> Set UserID -> Set UserID -> IO ()
         loop cfg ins outs = do
+            -- Loop delay.
             let interval = cfg.intervalSeconds
             Log.info [i|Waiting for #{interval} seconds|]
             threadDelay $ fromIntegral interval * 1_000_000
-            (ins',  insChanged)  <- update Incoming ins
-            (outs', outsChanged) <- update Outgoing outs
-            when (insChanged || outsChanged) $ do
-                Log.info "Updating file on disk"
-                encodeFile cfg.filename (ins', outs')
-            loop cfg ins' outs'
+            -- Update in and out lists.
+            (ins',  insMsg)  <- update Incoming ins
+            (outs', outsMsg) <- update Outgoing outs
+            -- Check if we have any updates. If so, save the new values to disk,
+            -- and report the updates to Telegram.
+            let msg = insMsg <> outsMsg
+            case msg of
+                  Nothing -> loop cfg ins' outs' -- No updates.
+                  Just msg' -> do
+                      Log.info "Updating file on disk"
+                      encodeFile cfg.filename (ins', outs')
+                      Log.info "Sending update message"
+                      sendMessage cfg.telegramBotToken cfg.telegramChatID msg'
+                      loop cfg ins' outs'
                 where
-
                     -- Get updated list of the specified type, and report
-                    -- changes. Returns the new set and whether there were any
-                    -- changes.
+                    -- changes. Returns the new set and Just msg if there's an
+                    -- update message msg, and Nothing if there are no changes.
                     update :: FollowerType -- Type to check.
                            -> Set UserID -- Old set to compare to.
-                           -> IO (Set UserID, Bool)
+                           -> IO (Set UserID, Maybe String)
                     update typ old = do
                         Log.info [i|Getting updated list of #{typ}|]
                         new <- getFollowerIDs cfg.twitterBearerToken
@@ -72,40 +98,49 @@ main = getArgs >>= \case
                             addedN = Set.size added
                             removed = old Set.\\ new
                             removedN = Set.size removed
-                            change = addedN - removedN -- Net change.
-                            arrow -- Arrow to display net change.
-                              | change > 0 = "↑" :: String
-                              | change < 0 = "↓"
-                              | otherwise = "~"
-                            changed = addedN + removedN > 0
-                        when changed $ do
-                            Log.info "Reporting changes in #{typ}"
-                            putStrLn
-                                [i|Summary (#{typ}): +#{addedN} -#{removedN} (#{arrow}#{abs change})|]
-                            when (addedN > 0) $ do
-                                putStrLn $ case typ of
-                                  Incoming -> "Gained followers:"
-                                  Outgoing -> "Newly followed:"
-                                printUsers added
-                            when (removedN > 0) $ do
-                                putStrLn $ case typ of
-                                  Incoming -> "Lost followers:"
-                                  Outgoing -> "Stopped following:"
-                                printUsers removed
-                        pure (new, changed)
+                        added' <- lookupUsersByID cfg.twitterBearerToken
+                                . Set.toList $ added
+                        removed' <- lookupUsersByID cfg.twitterBearerToken
+                                  . Set.toList $ removed
+                        pure $ if addedN + removedN > 0
+                            then (new, Just $ concat
+                                [ printSummary typ addedN removedN (Set.size old)
+                                , printUsers "+" added'
+                                , printUsers "-" removed'
+                                ])
+                            else (new, Nothing)
 
-                    -- Looks up a set of users and prints them in a list.
-                    printUsers :: Set UserID -> IO ()
-                    printUsers =
-                        lookupUsersByID cfg.twitterBearerToken . Set.toList
-                        >=> mapM_ (\user -> putStrLn $
-                            let username = user.username
-                                name = user.name
-                             in [i|- @#{username} #{name}|])
+                    -- Formats summary line given type, number added, number
+                    -- removed, and size of set before change.
+                    printSummary :: FollowerType -> Int -> Int -> Int -> String
+                    printSummary typ addedN removedN oldN =
+                        [i|*Changes \\(#{typ}\\)*: #{format "\\+" addedN} #{format "\\-" removedN} #{changeStr}\n#{oldN} → #{oldN + change}|]
+                        where
+                            format :: String -> Int -> String
+                            format pre 0 = [i|#{pre}0|]
+                            format pre n = [i|*#{pre}#{n}*|]
+                            change = addedN - removedN
+                            changeStr
+                              | change > 0 = [i|*↑#{change}*|]
+                              | change < 0 = [i|*↓#{0 - change}*|]
+                              | otherwise  = "*~0*" :: String
 
-        -- Catch all exceptions and print them before forwarding them.
-        handler :: SomeException -> IO ()
-        handler e = Log.err "Unexpected exception occurred" >> throw e
+                    -- Formats a user nicely given a bullet point to use and a
+                    -- user JSON object. We pad usernames to 15 characters.
+                    printUser :: String -> UserJSON -> String
+                    printUser bullet user =
+                        let username = user.username
+                            padding = replicate (15 - length username) ' '
+                            name = user.name
+                         in [i|\\[`#{bullet}`\\]  `@#{username}#{padding}` [#{name}](https://twitter.com/#{username})|]
+
+                    -- Formats list of users with bullet points, returning empty
+                    -- string if list is empty.
+                    printUsers :: String -> [UserJSON] -> String
+                    printUsers _ [] = ""
+                    printUsers bullet users =
+                        ('\n' :) . (<> "\n") . intercalate "\n"
+                      . map (printUser bullet) $ users
 
 usage :: IO ()
 usage = do
