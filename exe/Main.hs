@@ -57,7 +57,12 @@ main = getArgs >>= \case
                 encodeFile cfg.filename (ins', outs')
             loop cfg ins' outs'
                 where
-                    update :: FollowerType -> Set UserID
+
+                    -- Get updated list of the specified type, and report
+                    -- changes. Returns the new set and whether there were any
+                    -- changes.
+                    update :: FollowerType -- Type to check.
+                           -> Set UserID -- Old set to compare to.
                            -> IO (Set UserID, Bool)
                     update typ old = do
                         Log.info [i|Getting updated list of #{typ}|]
@@ -88,6 +93,8 @@ main = getArgs >>= \case
                                   Outgoing -> "Stopped following:"
                                 printUsers removed
                         pure (new, changed)
+
+                    -- Looks up a set of users and prints them in a list.
                     printUsers :: Set UserID -> IO ()
                     printUsers =
                         lookupUsersByID cfg.twitterBearerToken . Set.toList
