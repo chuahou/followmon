@@ -32,6 +32,7 @@ sendMessage tok chatID msg = do
                     [ ("chat_id", Just [i|#{chatID}|])
                     , ("text", Just [i|#{msg}|])
                     , ("parse_mode", Just "MarkdownV2")
+                    , ("disable_web_page_preview", Just "true")
                     ]
     Log.info [i|Sending message #{msg} to chat ID #{chatID}|]
     response <- getResponseBody <$> httpJSON req :: IO ResponseJSON
