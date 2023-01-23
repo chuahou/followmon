@@ -4,19 +4,30 @@
 {-# LANGUAGE DeriveGeneric         #-}
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE NoFieldSelectors      #-}
+{-# LANGUAGE NumericUnderscores    #-}
+{-# LANGUAGE ScopedTypeVariables   #-}
 
 module Followmon.Twitter (UserID, getFollowerIDs) where
 
 import Followmon.Log           qualified as Log
 
+import Control.Concurrent      (threadDelay)
+import Control.Exception       (handle, throw)
+import Control.Monad           (when)
 import Data.Aeson              (FromJSON (..), withObject, (.:))
+import Data.ByteString.UTF8    as BSU
 import Data.Function           ((&))
 import Data.Set                (Set)
 import Data.Set                qualified as Set
 import Data.String.Interpolate (i)
+import Data.Time               (UTCTime, defaultTimeLocale, diffUTCTime,
+                                parseTimeM)
+import Data.Time.Clock         (getCurrentTime)
 import GHC.Generics            (Generic)
-import Network.HTTP.Simple     (addToRequestQueryString, getResponseBody,
-                                httpJSON, setRequestBearerAuth)
+import Network.HTTP.Simple     (JSONException (..), addToRequestQueryString,
+                                getResponseBody, getResponseHeader,
+                                getResponseStatusCode, httpJSON,
+                                setRequestBearerAuth)
 
 -- | Type of user IDs.
 type UserID = Integer
@@ -55,7 +66,7 @@ getFollowerIDs tok username = go Nothing
         go :: Maybe String -- ^ Possible next cursor.
            -> IO (Set UserID)
         go mCursor = do
-            let count = 5000 -- How many to request each time.
+            let count = 5_000 -- How many to request each time.
             let req = [i|GET #{twitterAPI}/1.1/followers/ids.json|]
                     & setRequestBearerAuth [i|#{tok}|]
                     & addToRequestQueryString
@@ -67,7 +78,8 @@ getFollowerIDs tok username = go Nothing
                             [("cursor", Just [i|#{cursor}|])])
                         mCursor -- Add pagination token if necessary.
             Log.info [i|Requesting followers of #{username}|]
-            response <- getResponseBody <$> httpJSON req'
+            -- Make request, waiting for rate limit if necessary.
+            response <- waitForRateLimit $ getResponseBody <$> httpJSON req'
                         :: IO FollowersJSON
             let followers = Set.fromList response.ids
             let nReceived = Set.size followers
@@ -77,3 +89,34 @@ getFollowerIDs tok username = go Nothing
             case (response.next_cursor_str, nReceived == count) of
               (Just cursor, True) -> Set.union followers <$> go (Just cursor)
               _                   -> pure followers
+
+-- | Wait for rate limit reset if we get HTTP 429 with a @x-rate-limit-reset@
+-- response header while performing an IO action. This should present itself as
+-- a 'JSONConversionException' since we expect to use this with a 'httpJSON'
+-- call.
+waitForRateLimit :: forall a. IO a -> IO a
+waitForRateLimit action = handle handler action
+    where
+        handler :: JSONException -> IO a
+        handler e@(JSONConversionException _ response _) =
+            case ( getResponseStatusCode response
+                 , getResponseHeader "x-rate-limit-reset" response
+                 ) of
+                (429, [resetTime]) -> do
+                    Log.info [i|Rate limit timeout till #{resetTime}|]
+                    parseTimeM True defaultTimeLocale "%s"
+                        (BSU.toString resetTime) >>= delayUntil
+                    action -- Try again.
+                        where
+                            -- Delay until given time.
+                            delayUntil :: UTCTime -> IO ()
+                            delayUntil t = do
+                                currentTime <- getCurrentTime
+                                let delay = diffUTCTime t currentTime
+                                when (delay > 0) $ do
+                                    Log.info [i|Waiting #{delay} seconds|]
+                                    threadDelay (ceiling delay * 1_000_000)
+                                    delayUntil t -- Make sure done.
+                _ -> throw e
+        -- Forward all other exceptions.
+        handler e = throw e
