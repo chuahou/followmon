@@ -139,7 +139,7 @@ main = getArgs >>= \case
                     printUsers :: String -> [UserJSON] -> String
                     printUsers _ [] = ""
                     printUsers bullet users =
-                        ('\n' :) . (<> "\n") . intercalate "\n"
+                        ('\n' :) . (<> "\n\n") . intercalate "\n"
                       . map (printUser bullet) $ users
 
 usage :: IO ()
