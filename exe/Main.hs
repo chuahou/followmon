@@ -115,6 +115,7 @@ main = getArgs >>= \case
                                 [ printSummary typ addedN removedN (Set.size old)
                                 , printUsers "+" added'
                                 , printUsers "-" removed'
+                                , "\n"
                                 ])
                             else (new, Nothing)
 
@@ -122,7 +123,7 @@ main = getArgs >>= \case
                     -- removed, and size of set before change.
                     printSummary :: FollowerType -> Int -> Int -> Int -> String
                     printSummary typ addedN removedN oldN =
-                        [i|*Changes \\(#{typ}\\)*: #{format "\\+" addedN} #{format "\\-" removedN} #{changeStr}\n#{oldN} → #{oldN + change}|]
+                        [i|*Changes \\(#{typ}\\)*: #{format "\\+" addedN} #{format "\\-" removedN} #{changeStr}\n#{oldN} → #{oldN + change}\n|]
                         where
                             format :: String -> Int -> String
                             format pre 0 = [i|#{pre}0|]
@@ -147,7 +148,7 @@ main = getArgs >>= \case
                     printUsers :: String -> [UserJSON] -> String
                     printUsers _ [] = ""
                     printUsers bullet users =
-                        ('\n' :) . (<> "\n\n") . intercalate "\n"
+                        (<> "\n") . intercalate "\n"
                       . map (printUser bullet) $ users
 
 usage :: IO ()
