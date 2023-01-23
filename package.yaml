@@ -13,13 +13,15 @@ ghc-options:
     - -static
 
 default-extensions:
+    - DuplicateRecordFields
     - ImportQualifiedPost
     - LambdaCase
+    - NoFieldSelectors
+    - NumericUnderscores
     - OverloadedRecordDot
     - OverloadedStrings
     - QuasiQuotes
     - TupleSections
-
 dependencies:
     - base >= 4.16 && < 5
     - aeson ^>= 2.1.1.0

@@ -1,11 +1,8 @@
 -- SPDX-License-Identifier: MIT
 -- Copyright (c) 2023 Chua Hou
 
-{-# LANGUAGE DeriveGeneric         #-}
-{-# LANGUAGE DuplicateRecordFields #-}
-{-# LANGUAGE NoFieldSelectors      #-}
-{-# LANGUAGE NumericUnderscores    #-}
-{-# LANGUAGE ScopedTypeVariables   #-}
+{-# LANGUAGE DeriveGeneric       #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 module Followmon.Twitter
     ( UserID

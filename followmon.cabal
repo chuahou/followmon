@@ -21,14 +21,18 @@ source-repository head
 executable followmon
   main-is: Main.hs
   other-modules:
+      Followmon.Config
       Followmon.Log
       Followmon.Twitter
       Paths_followmon
   hs-source-dirs:
       exe
   default-extensions:
+      DuplicateRecordFields
       ImportQualifiedPost
       LambdaCase
+      NoFieldSelectors
+      NumericUnderscores
       OverloadedRecordDot
       OverloadedStrings
       QuasiQuotes
