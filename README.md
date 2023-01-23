@@ -19,6 +19,7 @@ configuration file. The configuration file should have the following structure
 , filename = "<Path to a file to store state between invocations>"
 , telegramBotToken = "<Telegram bot token>"
 , telegramChatID = "<Telegram chat ID to send messages to>"
+, healthcheckUrl = Some "<healthchecks.io URL>" -- or None Text
 }
 ```
 

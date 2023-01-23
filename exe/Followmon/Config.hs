@@ -11,5 +11,6 @@ data Config = Config
     , filename           :: FilePath -- ^ Filepath for serialized sets.
     , telegramBotToken   :: String -- ^ Bot token for Telegram.
     , telegramChatID     :: String -- ^ Chat ID for Telegram.
+    , healthcheckUrl     :: Maybe String -- ^ Optional healthchecks.io URL.
     } deriving (Generic, Show)
 instance FromDhall Config

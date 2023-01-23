@@ -9,8 +9,9 @@ import Followmon.Telegram
 import Followmon.Twitter
 
 import Control.Applicative     ((<|>))
-import Control.Concurrent      (threadDelay)
+import Control.Concurrent      (forkIO, threadDelay)
 import Control.Exception       (SomeException, handle, throw)
+import Control.Monad           (void)
 import Data.Binary             (decodeOrFail, encodeFile)
 import Data.ByteString.Lazy    qualified as BL
 import Data.List               (intercalate)
@@ -18,6 +19,7 @@ import Data.Set                (Set)
 import Data.Set                qualified as Set
 import Data.String.Interpolate (i)
 import Dhall                   (auto, inputFile)
+import Network.HTTP.Simple     (httpNoBody)
 import System.Environment      (getArgs)
 import System.Exit             (exitFailure)
 
@@ -65,6 +67,12 @@ main = getArgs >>= \case
             loop cfg ins outs -- Enter main loop.
         loop :: Config -> Set UserID -> Set UserID -> IO ()
         loop cfg ins outs = do
+            -- Send healthcheck if specified.
+            case cfg.healthcheckUrl of
+              Nothing  -> pure ()
+              Just url -> do
+                  Log.info [i|Pinging healthcheck #{url}|]
+                  void . forkIO . void $ httpNoBody [i|GET #{url}|]
             -- Loop delay.
             let interval = cfg.intervalSeconds
             Log.info [i|Waiting for #{interval} seconds|]
