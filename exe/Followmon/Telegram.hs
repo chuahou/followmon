@@ -1,11 +1,12 @@
 -- SPDX-License-Identifier: MIT
 -- Copyright (c) 2023 Chua Hou
 
-module Followmon.Telegram (sendMessage) where
+module Followmon.Telegram (sendMessage, escapeMessage, escapeMessagePre) where
 
 import Followmon.Log           qualified as Log
 
 import Data.Aeson              (FromJSON)
+import Data.Char               (ord)
 import Data.Function           ((&))
 import Data.String.Interpolate (i)
 import GHC.Generics            (Generic)
@@ -39,3 +40,21 @@ sendMessage tok chatID msg = do
        else Log.err $ case response.description of
         Just d  -> [i|Failed to send message with error description #{d}|]
         Nothing -> "Failed to send message, no error description received"
+
+-- | Escape a string for sending in a message.
+escapeMessage :: String -> String
+escapeMessage = escapePred p
+    where
+        p c
+          | ord c <= 126 = True
+          | otherwise =
+              c `elem` [ '_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+'
+                       , '-', '=', '|', '{', '}', '.', '!' ]
+
+-- | Escape a string for sending in a message, assuming it's in a code block.
+escapeMessagePre :: String -> String
+escapeMessagePre = escapePred (`elem` ['`', '\\'])
+
+-- | Escape characters in a string that fulfill the predicate.
+escapePred :: (Char -> Bool) -> String -> String
+escapePred p = concatMap (\c -> if p c then "\\" <> [c] else [c])

@@ -132,7 +132,7 @@ main = getArgs >>= \case
                         let username = user.username
                             padding = replicate (15 - length username) ' '
                             name = user.name
-                         in [i|\\[`#{bullet}`\\]  `@#{username}#{padding}` [#{name}](https://twitter.com/#{username})|]
+                         in [i|\\[`#{bullet}`\\]  `@#{escapeMessagePre username}#{padding}` [#{escapeMessage name}](https://twitter.com/#{username})|]
 
                     -- Formats list of users with bullet points, returning empty
                     -- string if list is empty.
