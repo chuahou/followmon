@@ -25,6 +25,8 @@ default-extensions:
 dependencies:
     - base >= 4.16 && < 5
     - aeson ^>= 2.1.1.0
+    - binary ^>= 0.8.9.0
+    - bytestring ^>= 0.11.3.1
     - containers ^>= 0.6.5.1
     - dhall ^>= 1.41.2
     - http-conduit ^>= 2.3.8

@@ -7,9 +7,12 @@ import Followmon.Config
 import Followmon.Log           qualified as Log
 import Followmon.Twitter
 
+import Control.Applicative     ((<|>))
 import Control.Concurrent      (threadDelay)
 import Control.Exception       (SomeException, handle, throw)
 import Control.Monad           (when, (>=>))
+import Data.Binary             (decodeOrFail, encodeFile)
+import Data.ByteString.Lazy    qualified as BL
 import Data.Set                (Set)
 import Data.Set                qualified as Set
 import Data.String.Interpolate (i)
@@ -24,9 +27,22 @@ main = getArgs >>= \case
     where
         go :: Config -> IO ()
         go cfg = do
-            Log.info "Getting initial list of #{Incoming} and #{Outgoing}"
-            ins  <- getFollowerIDs cfg.twitterBearerToken cfg.username Incoming
-            outs <- getFollowerIDs cfg.twitterBearerToken cfg.username Outgoing
+            Log.info [i|Getting initial lists of #{Incoming} and #{Outgoing}|]
+            Log.info $ "Reading lists from file " ++ cfg.filename
+            lbs <- BL.readFile cfg.filename
+                    <|> (Log.err "Failed to read file" >> pure "")
+            (ins, outs) <- case decodeOrFail lbs of
+                Left _ -> do
+                    Log.err "Failed to decode file"
+                    Log.info "Getting initial lists from API"
+                    ins  <- getFollowerIDs cfg.twitterBearerToken
+                                cfg.username Incoming
+                    outs <- getFollowerIDs cfg.twitterBearerToken
+                                cfg.username Outgoing
+                    Log.info "Writing initial lists to disk"
+                    encodeFile cfg.filename (ins, outs)
+                    pure (ins, outs)
+                Right (_, _, y) -> pure y
             putStrLn [i|Initialized with #{Set.size ins} #{Incoming} and #{Set.size outs} #{Outgoing}|]
             loop cfg ins outs -- Enter main loop.
         loop :: Config -> Set UserID -> Set UserID -> IO ()
@@ -34,11 +50,15 @@ main = getArgs >>= \case
             let interval = cfg.intervalSeconds
             Log.info [i|Waiting for #{interval} seconds|]
             threadDelay $ fromIntegral interval * 1_000_000
-            ins'  <- update Incoming ins
-            outs' <- update Outgoing outs
+            (ins',  insChanged)  <- update Incoming ins
+            (outs', outsChanged) <- update Outgoing outs
+            when (insChanged || outsChanged) $ do
+                Log.info "Updating file on disk"
+                encodeFile cfg.filename (ins', outs')
             loop cfg ins' outs'
                 where
-                    update :: FollowerType -> Set UserID -> IO (Set UserID)
+                    update :: FollowerType -> Set UserID
+                           -> IO (Set UserID, Bool)
                     update typ old = do
                         Log.info [i|Getting updated list of #{typ}|]
                         new <- getFollowerIDs cfg.twitterBearerToken
@@ -52,7 +72,9 @@ main = getArgs >>= \case
                               | change > 0 = "↑" :: String
                               | change < 0 = "↓"
                               | otherwise = "~"
-                        when (addedN + removedN > 0) $ do
+                            changed = addedN + removedN > 0
+                        when changed $ do
+                            Log.info "Reporting changes in #{typ}"
                             putStrLn
                                 [i|Summary (#{typ}): +#{addedN} -#{removedN} (#{arrow}#{abs change})|]
                             when (addedN > 0) $ do
@@ -65,7 +87,7 @@ main = getArgs >>= \case
                                   Incoming -> "Lost followers:"
                                   Outgoing -> "Stopped following:"
                                 printUsers removed
-                        pure new
+                        pure (new, changed)
                     printUsers :: Set UserID -> IO ()
                     printUsers =
                         lookupUsersByID cfg.twitterBearerToken . Set.toList
