@@ -7,6 +7,7 @@
 module Followmon.Twitter
     ( UserID
     , UserJSON (..)
+    , FollowerType (..)
     , getFollowerIDs
     , lookupUsersByID
     ) where
@@ -59,18 +60,30 @@ instance FromJSON UserJSON
 twitterAPI :: String
 twitterAPI = "https://api.twitter.com"
 
--- | Get user IDs of followers of a username. Throws an error in IO if the
--- request fails or a parse error occurs.
+-- | Type of list to request. We use this as an argument to request functions
+-- since they have similar API interfaces.
+data FollowerType = Incoming -- ^ Followers.
+              | Outgoing -- ^ Followees/friends.
+instance Show FollowerType where
+    show Incoming = "followers"
+    show Outgoing = "followees"
+
+-- | Get user IDs of followers or followees of a username. Throws an error in IO
+-- if the request fails or a parse error occurs.
 getFollowerIDs :: String -- ^ Bearer token.
                -> String -- ^ Username to lookup.
+               -> FollowerType -- ^ Which list to get.
                -> IO (Set UserID)
-getFollowerIDs tok username = go Nothing
+getFollowerIDs tok username typ = go Nothing
     where
         go :: Maybe String -- ^ Possible next cursor.
            -> IO (Set UserID)
         go mCursor = do
             let count = 5_000 -- How many to request each time.
-            let req = [i|GET #{twitterAPI}/1.1/followers/ids.json|]
+            let endpoint = case typ of
+                             Incoming -> "followers"
+                             Outgoing -> "friends" :: String
+            let req = [i|GET #{twitterAPI}/1.1/#{endpoint}/ids.json|]
                     & setRequestBearerAuth [i|#{tok}|]
                     & addToRequestQueryString
                         [ ("screen_name", Just [i|#{username}|])
@@ -81,13 +94,13 @@ getFollowerIDs tok username = go Nothing
                         req & addToRequestQueryString
                             [("cursor", Just [i|#{cursor}|])])
                         mCursor -- Add pagination token if necessary.
-            Log.info [i|Requesting followers of #{username}|]
+            Log.info [i|Requesting #{typ} of #{username}|]
             -- Make request, waiting for rate limit if necessary.
             response <- waitForRateLimit $ getResponseBody <$> httpJSON req'
                         :: IO FollowersJSON
             let followers = Set.fromList response.ids
             let nReceived = Set.size followers
-            Log.info [i|Received #{nReceived} followers|]
+            Log.info [i|Received #{nReceived} #{typ}|]
             -- If we have a next cursor, and we got less than expected, go to
             -- the next page.
             case (response.next_cursor_str, nReceived == count) of

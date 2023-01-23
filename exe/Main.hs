@@ -24,36 +24,48 @@ main = getArgs >>= \case
     where
         go :: Config -> IO ()
         go cfg = do
-            Log.info "Getting initial list of followers"
-            fs <- getFollowerIDs cfg.twitterBearerToken cfg.username
-            putStrLn [i|Initialized with #{Set.size fs} followers|]
-            loop cfg fs -- Enter main loop.
-        loop :: Config -> Set UserID -> IO ()
-        loop cfg fs = do
+            Log.info "Getting initial list of #{Incoming} and #{Outgoing}"
+            ins  <- getFollowerIDs cfg.twitterBearerToken cfg.username Incoming
+            outs <- getFollowerIDs cfg.twitterBearerToken cfg.username Outgoing
+            putStrLn [i|Initialized with #{Set.size ins} #{Incoming} and #{Set.size outs} #{Outgoing}|]
+            loop cfg ins outs -- Enter main loop.
+        loop :: Config -> Set UserID -> Set UserID -> IO ()
+        loop cfg ins outs = do
             let interval = cfg.intervalSeconds
             Log.info [i|Waiting for #{interval} seconds|]
             threadDelay $ fromIntegral interval * 1_000_000
-            Log.info "Getting updated list of followers"
-            fs' <- getFollowerIDs cfg.twitterBearerToken cfg.username
-            let added = fs' Set.\\ fs
-                addedN = Set.size added
-                removed = fs Set.\\ fs'
-                removedN = Set.size removed
-                change = addedN - removedN
-                arrow | change > 0 = "↑" :: String
-                      | change < 0 = "↓"
-                      | otherwise = "~"
-            when (addedN + removedN > 0) $ do
-                putStrLn
-                    [i|Summary: +#{addedN} -#{removedN} (#{arrow}#{abs change})|]
-                when (addedN > 0) $ do
-                    putStrLn "Gained followers:"
-                    printUsers added
-                when (removedN > 0) $ do
-                    putStrLn "Lost followers:"
-                    printUsers removed
-            loop cfg fs'
+            ins'  <- update Incoming ins
+            outs' <- update Outgoing outs
+            loop cfg ins' outs'
                 where
+                    update :: FollowerType -> Set UserID -> IO (Set UserID)
+                    update typ old = do
+                        Log.info [i|Getting updated list of #{typ}|]
+                        new <- getFollowerIDs cfg.twitterBearerToken
+                                    cfg.username typ
+                        let added = new Set.\\ old
+                            addedN = Set.size added
+                            removed = old Set.\\ new
+                            removedN = Set.size removed
+                            change = addedN - removedN -- Net change.
+                            arrow -- Arrow to display net change.
+                              | change > 0 = "↑" :: String
+                              | change < 0 = "↓"
+                              | otherwise = "~"
+                        when (addedN + removedN > 0) $ do
+                            putStrLn
+                                [i|Summary (#{typ}): +#{addedN} -#{removedN} (#{arrow}#{abs change})|]
+                            when (addedN > 0) $ do
+                                putStrLn $ case typ of
+                                  Incoming -> "Gained followers:"
+                                  Outgoing -> "Newly followed:"
+                                printUsers added
+                            when (removedN > 0) $ do
+                                putStrLn $ case typ of
+                                  Incoming -> "Lost followers:"
+                                  Outgoing -> "Stopped following:"
+                                printUsers removed
+                        pure new
                     printUsers :: Set UserID -> IO ()
                     printUsers =
                         lookupUsersByID cfg.twitterBearerToken . Set.toList
