@@ -7,6 +7,7 @@ module Followmon.Twitter
     , FollowerType (..)
     , getFollowerIDs
     , lookupUsersByID
+    , DataWrapper
     ) where
 
 import Followmon.Log           qualified as Log
@@ -14,10 +15,12 @@ import Followmon.Log           qualified as Log
 import Control.Concurrent      (threadDelay)
 import Control.Exception       (handle, throw)
 import Control.Monad           (when)
-import Data.Aeson              (FromJSON (..), withObject, (.:))
+import Data.Aeson              (FromJSON (..), withObject, (.:?))
 import Data.ByteString.UTF8    qualified as BSU
 import Data.Function           ((&))
 import Data.List               (intercalate)
+import Data.Map.Strict         (Map)
+import Data.Map.Strict         qualified as Map
 import Data.Set                (Set)
 import Data.Set                qualified as Set
 import Data.String.Interpolate (i)
@@ -40,10 +43,10 @@ data FollowersJSON = FollowersJSON
     } deriving (Generic, Show)
 instance FromJSON FollowersJSON
 
--- | JSON object wrapped in a "data" field.
-newtype DataWrapper a = DataWrapper { content :: a } deriving Show
+-- | JSON object wrapped in a possibly-existing "data" field.
+newtype DataWrapper a = DataWrapper { content :: Maybe a } deriving Show
 instance FromJSON a => FromJSON (DataWrapper a) where
-    parseJSON = withObject "DataWrapper" $ \v -> DataWrapper <$> v .: "data"
+    parseJSON = withObject "DataWrapper" $ \v -> DataWrapper <$> v .:? "data"
 
 -- | JSON object containing information about a user.
 data UserJSON = UserJSON
@@ -138,11 +141,11 @@ waitForRateLimit action = handle handler action
 -- | Lookup a list of users by their user IDs.
 lookupUsersByID :: String -- ^ Bearer token.
                 -> [UserID] -- ^ List of user IDs.
-                -> IO [UserJSON]
+                -> IO (Map UserID UserJSON)
 lookupUsersByID tok ids = do
     Log.info [i|Looking up #{length ids} users|]
-    users <- fmap concat . mapM lookupGroup . groupIds $ ids
-    Log.info [i|Looked up #{length users} users|]
+    users <- fmap Map.unions . mapM lookupGroup . groupIds $ ids
+    Log.info [i|Looked up #{Map.size users} users|]
     pure users
     where
         -- Split IDs into groups of 100.
@@ -150,13 +153,17 @@ lookupUsersByID tok ids = do
         groupIds [] = []
         groupIds xs = let (ys, xs') = splitAt 100 xs
                        in ys : groupIds xs'
-        lookupGroup :: [UserID] -> IO [UserJSON]
+        lookupGroup :: [UserID] -> IO (Map UserID UserJSON)
         lookupGroup ids' = do
             Log.info [i|Requesting #{length ids'} users|]
             let usersParam = intercalate "," ids'
             let req = [i|GET #{twitterAPI}/2/users|]
                     & setRequestBearerAuth [i|#{tok}|]
                     & addToRequestQueryString [("ids", Just [i|#{usersParam}|])]
-            DataWrapper users <- waitForRateLimit $
+            DataWrapper mData <- waitForRateLimit $
                                     getResponseBody <$> httpJSON req
-            pure users
+            pure . Map.fromList . maybe [] (map (\u -> (u.id, u))) $ mData
+            -- It is possible for lookups to fail, in which case that particular
+            -- user's data will be missing from .data, and .errors will show the
+            -- appropriate error message. DataWrapper handles the case where all
+            -- failed and .data doesn't exist.

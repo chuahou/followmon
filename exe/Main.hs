@@ -15,6 +15,7 @@ import Control.Monad           (void)
 import Data.Binary             (decodeOrFail, encodeFile)
 import Data.ByteString.Lazy    qualified as BL
 import Data.List               (intercalate)
+import Data.Map.Strict         qualified as Map
 import Data.Set                (Set)
 import Data.Set                qualified as Set
 import Data.String.Interpolate (i)
@@ -106,10 +107,15 @@ main = getArgs >>= \case
                             addedN = Set.size added
                             removed = old Set.\\ new
                             removedN = Set.size removed
-                        added' <- lookupUsersByID cfg.twitterBearerToken
-                                . Set.toList $ added
-                        removed' <- lookupUsersByID cfg.twitterBearerToken
-                                  . Set.toList $ removed
+                        userMap <- lookupUsersByID cfg.twitterBearerToken
+                                 . Set.toList $ Set.union added removed
+                        let lookupUser m uid = case m Map.!? uid of
+                                                 Just u -> u
+                                                 Nothing -> UserJSON uid
+                                                                "unknown"
+                                                                [i|#{uid}|]
+                            added' = map (lookupUser userMap) $ Set.toList added
+                            removed' = map (lookupUser userMap) $ Set.toList removed
                         pure $ if addedN + removedN > 0
                             then (new, Just $ concat
                                 [ printSummary typ addedN removedN (Set.size old)
