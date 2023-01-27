@@ -138,7 +138,7 @@ main = getArgs >>= \case
                             changeStr
                               | change > 0 = [i|*↑#{change}*|]
                               | change < 0 = [i|*↓#{0 - change}*|]
-                              | otherwise  = "*~0*" :: String
+                              | otherwise  = "*\\~0*" :: String
 
                     -- Formats a user nicely given a bullet point to use and a
                     -- user JSON object. We pad usernames to 15 characters.
