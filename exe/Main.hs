@@ -143,6 +143,10 @@ main = getArgs >>= \case
             outsReport <- report cfg userCache Outgoing (Set.size outs)
                             outsAdded outsRemoved
             let mReport = insReport <> outsReport -- Nothing if nothing to report.
+            -- Report updates to Telegram if necessary.
+            maybe (pure ()) (\msg -> do
+                Log.info "Sending update message"
+                sendMessage cfg.telegramBotToken cfg.telegramChatID msg) mReport
             -- Update user cache.
             mNewCache <- updateCache cfg userCache (Set.union ins' outs')
             let userCache' = fromMaybe userCache mNewCache
@@ -150,11 +154,6 @@ main = getArgs >>= \case
             when (isJust mReport || isJust mNewCache) $ do
                 Log.info "Updating file on disk"
                 encodeFile cfg.filename (ins', outs', userCache')
-            -- Report updates to Telegram if necessary.
-            maybe (pure ()) (\msg -> do
-                Log.info "Sending update message"
-                sendMessage cfg.telegramBotToken cfg.telegramChatID msg
-                loop cfg ins' outs' userCache') mReport
             -- Next iteration.
             loop cfg ins' outs' userCache'
 
