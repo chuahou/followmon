@@ -49,6 +49,36 @@ instance Binary CacheTime where
                Nothing -> pure $ CacheTime (UTCTime (fromGregorian 1970 1 1)
                                                (secondsToDiffTime 0))
 
+-- | Type of lists saved to disk.
+type FileSaved = (Set UserID, Set UserID, UserCache)
+
+-- | Try to decode a 'FileSaved' from the given filename, returning 'Nothing' if
+-- impossible. Goes through a list of past formats, updating them to the latest
+-- format if applicable.
+decodeFile :: FilePath -> IO (Maybe FileSaved)
+decodeFile fname =
+        (BL.readFile fname >>= go decoders)
+    <|> (Log.err "Failed to read file" >> pure Nothing)
+    where
+
+        go :: [BL.ByteString -> Maybe FileSaved]
+           -> BL.ByteString -> IO (Maybe FileSaved)
+        go [] _       = pure Nothing
+        go (d:ds) lbs = case d lbs of
+                          Just y  -> pure $ Just y
+                          Nothing -> Log.err "Falling back to next decoder"
+                                    >> go ds lbs
+
+        decoders :: [BL.ByteString -> Maybe FileSaved]
+        decoders = [ \lbs -> case decodeOrFail lbs of
+                               Left _          -> Nothing
+                               Right (_, _, y) -> Just y
+                   , \lbs -> case decodeOrFail lbs of
+                               Left _ -> Nothing
+                               Right (_, _, (ins, outs)) ->
+                                   Just (ins, outs, Map.empty)
+                   ]
+
 main :: IO ()
 main = getArgs >>= \case
         [x] -> inputFile auto [i|#{x}|] >>= \cfg -> handle (handler cfg) (go cfg)
@@ -72,36 +102,16 @@ main = getArgs >>= \case
         go cfg = do
             Log.info [i|Getting initial lists|]
             Log.info $ "Reading lists from file " ++ cfg.filename
-            -- We used to store (ins, outs) only, but now we update to
-            -- (ins, outs, userCache). If we fail to decode as
-            -- (ins, outs, userCache), we will try to read the old format and
-            -- overwrite it in the new format.
-            lbs <- BL.readFile cfg.filename
-                    <|> (Log.err "Failed to read file" >> pure "")
-            (ins, outs, userCache) <- case decodeOrFail lbs of
-                Left _ -> do
-                    Log.err "Failed to decode file"
-                    Log.info "Attempting to decode legacy file"
-                    case decodeOrFail lbs of
-                      Left _ -> do
-                          Log.err "Failed to decode legacy file"
-                          Log.info "Getting initial lists from API"
-                          ins  <- getFollowerIDs cfg.twitterBearerToken
-                                      cfg.username Incoming
-                          outs <- getFollowerIDs cfg.twitterBearerToken
-                                      cfg.username Outgoing
-                          Log.info "Writing initial lists to disk"
-                          encodeFile cfg.filename (ins, outs)
-                          pure (ins, outs, Map.empty)
-                      Right (_, _, (ins, outs)) -> do
-                          Log.info "Decoded initial lists from legacy file"
-                          Log.info "Updating file to new format"
-                          let newFormat = (ins, outs, Map.empty :: UserCache)
-                          encodeFile cfg.filename newFormat
-                          pure newFormat
-                Right (_, _, y) -> do
-                    Log.info "Decoded initial lists from file"
-                    pure y
+            (ins, outs, userCache) <- decodeFile cfg.filename >>= \case
+              Just decoded -> pure decoded
+              Nothing -> do
+                  Log.err "Failed to decode file"
+                  Log.info "Getting initial lists from API"
+                  ins  <- getFollowerIDs cfg.twitterBearerToken
+                            cfg.username Incoming
+                  outs <- getFollowerIDs cfg.twitterBearerToken
+                            cfg.username Outgoing
+                  pure (ins, outs, Map.empty)
             sendMessage cfg.telegramBotToken cfg.telegramChatID
                 [i|Initialized with #{Set.size ins} #{Incoming} and #{Set.size outs} #{Outgoing}\\.|]
             loop cfg ins outs userCache -- Enter main loop.
