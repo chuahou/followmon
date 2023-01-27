@@ -20,6 +20,7 @@ configuration file. The configuration file should have the following structure
 , telegramBotToken = "<Telegram bot token>"
 , telegramChatID = "<Telegram chat ID to send messages to>"
 , healthcheckUrl = Some "<healthchecks.io URL>" -- or None Text
+, userCacheSeconds = 86400 -- Number of seconds to cache user information
 }
 ```
 

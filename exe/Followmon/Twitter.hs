@@ -16,6 +16,7 @@ import Control.Concurrent      (threadDelay)
 import Control.Exception       (handle, throw)
 import Control.Monad           (when)
 import Data.Aeson              (FromJSON (..), withObject, (.:?))
+import Data.Binary             (Binary)
 import Data.ByteString.UTF8    qualified as BSU
 import Data.Function           ((&))
 import Data.List               (intercalate)
@@ -55,6 +56,7 @@ data UserJSON = UserJSON
     , username :: String
     } deriving (Generic, Show)
 instance FromJSON UserJSON
+instance Binary UserJSON
 
 -- | Twitter API base URL.
 twitterAPI :: String

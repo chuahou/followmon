@@ -12,5 +12,6 @@ data Config = Config
     , telegramBotToken   :: String -- ^ Bot token for Telegram.
     , telegramChatID     :: String -- ^ Chat ID for Telegram.
     , healthcheckUrl     :: Maybe String -- ^ Optional healthchecks.io URL.
+    , userCacheSeconds   :: Natural -- ^ How long to cache user info.
     } deriving (Generic, Show)
 instance FromDhall Config
