@@ -158,14 +158,16 @@ lookupUsersByID tok ids = do
                        in ys : groupIds xs'
         lookupGroup :: [UserID] -> IO (Map UserID UserJSON)
         lookupGroup ids' = do
-            Log.info [i|Requesting #{length ids'} users|]
+            Log.info [i|Requesting #{length ids'} users: #{ids'}|]
             let usersParam = intercalate "," ids'
             let req = [i|GET #{twitterAPI}/2/users|]
                     & setRequestBearerAuth [i|#{tok}|]
                     & addToRequestQueryString [("ids", Just [i|#{usersParam}|])]
             DataWrapper mData <- waitForRateLimit $
                                     getResponseBody <$> httpJSON req
-            pure . Map.fromList . maybe [] (map (\u -> (u.id, u))) $ mData
+            let y = Map.fromList . maybe [] (map (\u -> (u.id, u))) $ mData
+            Log.info [i|Got #{length y} users: #{y}|]
+            pure y
             -- It is possible for lookups to fail, in which case that particular
             -- user's data will be missing from .data, and .errors will show the
             -- appropriate error message. DataWrapper handles the case where all
