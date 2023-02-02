@@ -19,7 +19,7 @@ import Data.ByteString.Lazy    qualified as BL
 import Data.List               (intercalate)
 import Data.Map.Strict         (Map)
 import Data.Map.Strict         qualified as Map
-import Data.Maybe              (fromMaybe, isJust, isNothing, mapMaybe)
+import Data.Maybe              (fromMaybe, isJust)
 import Data.Set                (Set)
 import Data.Set                qualified as Set
 import Data.String.Interpolate (i)
@@ -226,44 +226,35 @@ report cfg userCache typ oldN added removed = do
                             name = user.name
                          in [i|\\[`#{bullet}`\\]  `@#{escapeMessagePre username}#{padding}` [#{escapeMessage name}](https://twitter.com/#{username})|]
 
--- | Update user information cache. Goes through the set of users to keep in the
--- cache, taking a value from the old cache if available and not expired, and
--- looking it up in the API otherwise. Returns @Just newCache@ if the cache is
--- updated, and @Nothing@ if there are no updates.
+-- | Update user information cache. Goes through the cache maintaining the value
+-- from the old cache if available and not expired, and looking it up in the API
+-- otherwise. Also attempts to add new values from the set of user IDs provided.
+-- If the lookup fails, it keeps the old expired value. Returns @Just newCache@
+-- if the cache is updated, and @Nothing@ if there are no updates.
 updateCache :: Config -- ^ Application config.
             -> UserCache -- ^ Previous copy of cache.
-            -> Set UserID -- ^ Set of users to keep in the cache.
+            -> Set UserID -- ^ Set of users to add to the cache.
             -> IO (Maybe UserCache)
 updateCache cfg userCache uids = do
-    let oldSize = Map.size userCache
-    Log.info [i|Updating cache, current size #{oldSize}|]
+    Log.info [i|Updating cache, current size #{Map.size userCache}|]
     t <- getCurrentTime
-    let uids' = Set.toList uids
+    let uids' = Set.toList . Set.union uids . Set.fromList $ Map.keys userCache
         maxDiffTime = fromIntegral cfg.userCacheSeconds
-        -- Check each user ID, mapping it to a tuple of itself with @Nothing@ if
-        -- we have to look it up, and @Just v@ if we are using the cached value
-        -- @v@.
-        ys = map (\uid -> do
-                case userCache Map.!? uid of
-                  Just (ct, u) ->
-                      if diffUTCTime t ct.time > maxDiffTime
-                         then (uid, Nothing)       -- Expired.
-                         else (uid, Just (ct, u))  -- Use cached value.
-                  Nothing -> (uid, Nothing)) uids' -- Not cached.
-        -- List of user IDs to refresh.
-        toRefresh = map fst . filter (isNothing . snd) $ ys
-        -- Values to take from the old cache.
-        cache = Map.fromList . mapMaybe (\(uid, mu) -> (uid,) <$> mu) $ ys
+        -- Find out which user IDs we need to attempt to update.
+        toRefresh = filter (\uid -> do
+                        case userCache Map.!? uid of
+                          Nothing      -> True -- Not cached.
+                          Just (ct, _) -> diffUTCTime t ct.time > maxDiffTime)
+                                               -- Only if expired.
+                      uids'
     case toRefresh of
-      [] -> if oldSize == Map.size cache
-               then pure Nothing -- Nothing to refresh, cache size did not
-                                 -- shrink, meaning nothing was updated.
-               else pure $ Just cache
+      [] -> pure Nothing -- We didn't refresh anything.
       _ -> do -- We have things to refresh.
         Log.info [i|Updating #{length toRefresh} users|]
         refreshed <- lookupUsersByID cfg.twitterBearerToken toRefresh
         ct <- CacheTime <$> getCurrentTime
-        let userCache' = Map.union cache (Map.map (ct,) refreshed)
+        let userCache' = Map.union userCache (Map.map (ct,) refreshed)
+            -- Keeps values that could not be refreshed in the cache.
         Log.info [i|Updated cache, new size #{Map.size userCache'}|]
         pure $ Just userCache'
 
