@@ -144,6 +144,7 @@ waitForRateLimit action = handle handler action
 lookupUsersByID :: String -- ^ Bearer token.
                 -> [UserID] -- ^ List of user IDs.
                 -> IO (Map UserID UserJSON)
+lookupUsersByID _ [] = pure Map.empty
 lookupUsersByID tok ids = do
     Log.info [i|Looking up #{length ids} users|]
     users <- fmap Map.unions . mapM lookupGroup . groupIds $ ids
