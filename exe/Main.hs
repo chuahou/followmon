@@ -253,7 +253,7 @@ updateCache cfg userCache uids = do
         Log.info [i|Updating #{length toRefresh} users|]
         refreshed <- lookupUsersByID cfg.twitterBearerToken toRefresh
         ct <- CacheTime <$> getCurrentTime
-        let userCache' = Map.union userCache (Map.map (ct,) refreshed)
+        let userCache' = Map.union (Map.map (ct,) refreshed) userCache
             -- Keeps values that could not be refreshed in the cache.
         Log.info [i|Updated cache, new size #{Map.size userCache'}|]
         pure $ Just userCache'
