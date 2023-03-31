@@ -1,58 +1,30 @@
 {
-  inputs = {
-    haskellNix.url = "github:input-output-hk/haskell.nix";
-    nixpkgs.follows = "haskellNix/nixpkgs-unstable";
-    flake-utils.url = "github:numtide/flake-utils";
-  };
+  inputs.nixpkgs.url = "nixpkgs/nixpkgs-unstable";
 
-  # haskell.nix binary cache
-  nixConfig = {
-    extra-substituters = "https://cache.iog.io";
-    extra-trusted-public-keys = "hydra.iohk.io:f/Ea+s+dFdN+3Y/G+FDgSq+a5NEWhJGzdjvKNGv0/EQ=";
-  };
+  outputs = inputs@{ self, nixpkgs, ... }:
+  let
+    system = "x86_64-linux";
+    pkgs = nixpkgs.legacyPackages.${system};
 
-  outputs = inputs@{ self, nixpkgs, haskellNix, flake-utils, ... }:
-    flake-utils.lib.eachSystem [ "x86_64-linux" ] (system:
-      let
-        overlays = [
-          haskellNix.overlay
-          (self: super: {
-            followmon = self.haskell-nix.project' {
-              src = self.haskell-nix.haskellLib.cleanSourceWith {
-                name = "followmon-source";
-                src = ./.;
-              };
-              materialized = ./materialized/followmon;
-              compiler-nix-name = "ghc925"; # Keep synced with cabal.project.
-            };
-          })
-        ];
-        pkgs = import nixpkgs {
-          inherit system overlays;
-          inherit (haskellNix) config;
-        };
-        flake = pkgs.followmon.flake {};
+    project = returnShellEnv: pkgs.haskellPackages.developPackage {
+      root = ./.;
 
-      in flake // {
-        packages.default = flake.packages."followmon:exe:followmon";
-        devShells.default = pkgs.followmon.shellFor {
-          tools = {
-            haskell-language-server = {
-              version = "1.9.0.0";
-              index-state = "2023-01-22T00:00:00Z";
-              materialized = ./materialized/haskell-language-server;
-            };
-            hoogle = {
-              version = "5.0.18.3";
-              index-state = "2023-01-22T00:00:00Z";
-              materialized = ./materialized/hoogle;
-            };
-          };
-          buildInputs = with pkgs; [
+      # Add build tools for shell env.
+      modifier = drv:
+        pkgs.haskell.lib.addBuildTools drv
+          (pkgs.lib.optionals returnShellEnv (with pkgs.haskellPackages; [
             cabal-install
             hpack
-          ];
-          exactDeps = true;
-        };
-      });
+            haskell-language-server
+          ]));
+      inherit returnShellEnv;
+    };
+
+    # Wrap static executable with runtime deps.
+    static = pkgs.haskell.lib.justStaticExecutables (project false);
+
+  in {
+    packages.${system}.default = static;
+    devShells.${system}.default = project true;
+  };
 }
