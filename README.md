@@ -49,3 +49,9 @@ intended user and the developer.
 
 If you would like to extend this for your use, or have any ideas to make this
 more generally usable, please feel free to open an issue.
+
+### Paid Twitter API
+
+It is no longer possible to access the endpoints required for anything less than
+an exorbitant fee, so this project is effectively dead for now. A scraping-based
+solution may be interesting...
